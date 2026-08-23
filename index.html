@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ExamOn: Proctoring Session</title>
+    <!-- Face-API -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    
+    <!-- PDF.js Scanner -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    
+    <!-- MathJax for Beautiful Equation Rendering -->
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background-color: #f4f6f8; color: #333; user-select: none; -webkit-user-select: none; }
+        
+        /* General Box Styling */
+        .card { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 500px; width: 100%; text-align: center; }
+        .center-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+        button { padding: 12px 25px; font-size: 16px; cursor: pointer; background-color: #0056b3; color: white; border: none; border-radius: 5px; font-weight: bold; margin: 10px; transition: background 0.3s; }
+        button:hover { background-color: #004494; }
+        input[type="text"] { padding: 12px; font-size: 16px; width: 80%; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
+
+        /* UIs */
+        #role-select, #teacher-dashboard, #student-lobby, #teacher-monitor { display: none; }
+        #student-list { text-align: left; background: #f9fafb; padding: 15px; border-radius: 5px; min-height: 100px; margin: 20px 0; border: 1px solid #ddd; }
+        .student-item { padding: 8px; border-bottom: 1px solid #eee; font-weight: bold; }
+
+        /* Teacher Live Monitor Grid */
+        #live-student-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 20px; width: 100%; }
+        .student-card { background: white; border: 2px solid #28a745; padding: 15px; border-radius: 8px; text-align: left; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
+        .student-card h3 { margin: 0 0 10px 0; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
+        .student-card p { margin: 5px 0; font-size: 14px; color: #555; }
+        .timer-badge { background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-size: 14px; color: #333; font-family: monospace; font-weight: bold; }
+        .current-q-badge { display: inline-block; background: #0056b3; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px; }
+        
+        .infraction-list { margin: 10px 0 0 0; padding-left: 20px; font-size: 13px; color: #dc3545; flex-grow: 1; }
+        .infraction-list li { margin-bottom: 4px; }
+
+        /* Exam Layout */
+        #exam-container { display: none; flex-direction: row; height: 100vh; overflow: hidden; }
+        #left-panel { flex: 7; display: flex; flex-direction: column; border-right: 2px solid #ddd; background: white; }
+        #exam-paper { flex: 1; padding: 40px; overflow-y: auto; }
+        
+        /* Dynamic Scratchpad */
+        #scratchpad-container { display: none; flex-direction: column; align-items: center; padding: 15px; border-top: 2px solid #ccc; background: #f9fafb; flex-shrink: 0; height: 300px; }
+        
+        /* Enhanced Questions Styling */
+        .question { background: #fff; border: 1px solid #e5e7eb; padding: 25px; border-radius: 8px; margin-bottom: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: border 0.3s; }
+        .question:focus-within { border: 2px solid #0056b3; }
+        .question h3 { margin-top: 0; color: #111827; border-bottom: 1px solid #eee; padding-bottom: 10px; font-size: 20px;}
+        .question-text { line-height: 1.8; color: #2d3748; font-size: 16px; white-space: pre-wrap; font-family: 'Segoe UI', system-ui, sans-serif; font-weight: bold; }
+        textarea { width: 100%; padding: 15px; border: 1px solid #ccc; border-radius: 5px; margin-top: 15px; font-family: monospace; font-size: 14px; resize: vertical; box-sizing: border-box; background: #f8f9fa;}
+        textarea:focus { outline: none; border-color: #0056b3; background: #fff; }
+        
+        #scratchpad { background: white; border: 2px solid #aaa; border-radius: 5px; cursor: crosshair; touch-action: none; width: 100%; max-width: 800px; }
+        .scratchpad-header { width: 100%; max-width: 800px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        
+        #proctor-panel { flex: 3; padding: 20px; background: #1f2937; color: white; display: flex; flex-direction: column; align-items: center; }
+        #strike-box { background: #dc3545; width: 100%; text-align: center; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        .strike-count { font-size: 28px; font-weight: bold; margin: 0; }
+        #ai-status { width: 100%; text-align: center; padding: 10px; border-radius: 5px; font-weight: bold; margin-bottom: 15px; background: #6c757d; color: white; }
+        video { width: 100%; border: 3px solid #4b5563; border-radius: 8px; transform: scaleX(-1); background: #000; }
+        
+        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
+        #warning-overlay { background: rgba(0, 0, 0, 0.85); }
+        .warning-box { background: #333; padding: 40px; border-radius: 10px; text-align: center; border: 4px solid #ffc107; color: white; }
+        #fail-overlay { background: rgba(220, 53, 69, 0.95); color: white; }
+        
+        .upload-box { background: #f8f9fa; border: 2px dashed #0056b3; padding: 15px; border-radius: 8px; margin: 15px 0; text-align: left; }
+        .upload-box label { font-weight: bold; display: block; margin-bottom: 8px; color: #0056b3; }
+        .upload-box input[type="file"] { width: 100%; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. ROLE SELECTION -->
+    <div id="role-select" class="center-screen" style="display: flex;">
+        <div class="card">
+            <h1>ExamOn</h1>
+            <p>Join or create an online examination session.</p>
+            <button onclick="showUI('teacher-dashboard'); generateRoom();">I am a Teacher</button>
+            <button onclick="showUI('student-lobby')">I am a Student</button>
+        </div>
+    </div>
+
+    <!-- 2. TEACHER LOBBY -->
+    <div id="teacher-dashboard" class="center-screen">
+        <div class="card">
+            <h2>Teacher Dashboard</h2>
+            <p>Share this Room Code with your students:</p>
+            <h1 id="room-code-display" style="font-size: 48px; letter-spacing: 5px; color: #0056b3;">----</h1>
+            
+            <div class="upload-box">
+                <label>Optional: Upload Exam PDF for AI Parsing</label>
+                <input type="file" id="exam-file-input" accept="application/pdf" />
+                <p style="font-size: 12px; color: #666; margin: 5px 0 0 0;">The system will map the physical layout of the PDF, strip answer lines, and isolate exact questions.</p>
+            </div>
+
+            <div id="student-list">Waiting for students to join...</div>
+            <button id="teacher-start-btn" style="background-color: #28a745; width: 100%;">Start Exam</button>
+        </div>
+    </div>
+
+    <!-- 3. TEACHER LIVE MONITORING -->
+    <div id="teacher-monitor" class="center-screen" style="align-items: flex-start; padding: 40px; background: #e9ecef; height: auto; min-height: 100vh;">
+        <div style="width: 100%; max-width: 1200px; margin: 0 auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>🔴 Live Exam Monitoring</h2>
+                <div style="background: white; padding: 10px 20px; border-radius: 8px; font-weight: bold; border: 1px solid #ccc;">
+                    Room Code: <span id="monitor-room-code" style="color: #0056b3; margin-left: 10px; letter-spacing: 2px;"></span>
+                </div>
+            </div>
+            
+            <div id="live-student-grid">
+                <!-- Live student cards will inject here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. STUDENT LOBBY -->
+    <div id="student-lobby" class="center-screen">
+        <div class="card" id="student-join-box">
+            <h2>Join Examination</h2>
+            <input type="text" id="student-name" placeholder="Enter your Full Name" required />
+            <input type="text" id="join-room-code" placeholder="Enter Room Code" required style="text-transform: uppercase;" />
+            <button onclick="joinRoom()" style="width: 100%;">Enter Waiting Room</button>
+        </div>
+        
+        <div class="card" id="student-waiting-box" style="display: none;">
+            <h2>Waiting for Teacher...</h2>
+            <p>You have successfully connected to the room.</p>
+            <p style="color: #dc3545; font-weight: bold;">When the teacher starts the exam, you will be prompted for Full Screen and Camera access.</p>
+            <div style="margin-top: 20px;" class="loader">Loading AI Models...</div>
+        </div>
+    </div>
+
+    <!-- 5. STUDENT EXAM INTERFACE -->
+    <div id="exam-container">
+        <!-- Left Side: Questions + Scratchpad -->
+        <div id="left-panel">
+            <div id="exam-paper">
+                <h2>Candidate Examination Paper</h2>
+                
+                <div id="exam-content">
+                    <div class="question">
+                        <p class="question-text">Waiting for exam data...</p>
+                        <textarea placeholder="Type your answer here..."></textarea>
+                    </div>
+                </div>
+
+                <button onclick="alert('Exam Submitted!'); location.reload();" style="background-color: #28a745; margin-top: 20px;">Submit Examination</button>
+            </div>
+            
+            <!-- Conditional Dynamic Scratchpad -->
+            <div id="scratchpad-container">
+                <div class="scratchpad-header">
+                    <strong style="color: #0056b3;">Digital Scratchpad (Required for current question)</strong>
+                    <button id="clear-pad" style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Clear Canvas</button>
+                </div>
+                <canvas id="scratchpad" width="700" height="220"></canvas>
+            </div>
+        </div>
+
+        <!-- Right Side: Proctoring Panel -->
+        <div id="proctor-panel">
+            <div id="strike-box">
+                <!-- UPDATED STRIKE COUNT TEXT -->
+                <p class="strike-count" id="strike-text">Strikes: 0 / 5</p>
+                <p id="last-reason">System Active & Secure</p>
+            </div>
+            <div id="ai-status">Connecting Camera...</div>
+            <video id="video" autoplay muted></video>
+            <div id="audio-status" style="margin-top: 10px; font-size: 14px; color: #9ca3af;">Mic Level: <span id="volume-level">0</span> / 100</div>
+        </div>
+    </div>
+
+    <!-- WARNING MODALS -->
+    <div id="warning-overlay" class="overlay">
+        <div class="warning-box">
+            <h2 style="color: #ffc107;">PROCTOR WARNING</h2>
+            <p id="warning-message" style="font-size: 20px; margin: 20px 0;"></p>
+            <p id="warning-strike-count" style="font-size: 24px; font-weight: bold; color: #dc3545;"></p>
+            <button id="acknowledge-btn" style="background:#007bff;">Acknowledge & Return</button>
+        </div>
+    </div>
+
+    <div id="fail-overlay" class="overlay">
+        <h1 style="font-size: 50px;">EXAM TERMINATED</h1>
+        <p style="font-size: 24px;">Maximum violations exceeded.</p>
+        <p id="fail-reason" style="font-size: 18px; color: #ffcccc;"></p>
+        <button onclick="location.reload()">Return to Menu</button>
+    </div>
+
+    <!-- THE LOGIC -->
+    <script>
+        // ==========================================
+        // 1. FIREBASE CONFIGURATION
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyDw0yyqsIzlhTYyThjeIh8_EhsbkfxyE_g",
+            authDomain: "examoline-85d19.firebaseapp.com",
+            projectId: "examoline-85d19",
+            storageBucket: "examoline-85d19.firebasestorage.app",
+            messagingSenderId: "511076501726",
+            appId: "1:511076501726:web:c0092bb1c102c5639a9a4f"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let currentRoomCode = "";
+        let isTeacher = false;
+        let currentUser = "";
+        
+        function showUI(uiId) {
+            document.getElementById('role-select').style.display = 'none';
+            document.getElementById('teacher-dashboard').style.display = 'none';
+            document.getElementById('teacher-monitor').style.display = 'none';
+            document.getElementById('student-lobby').style.display = 'none';
+            document.getElementById('exam-container').style.display = 'none';
+            document.getElementById(uiId).style.display = 'flex';
+        }
+
+        // ==========================================
+        // 2. TEACHER LOGIC & ADVANCED SPATIAL PDF SCANNER
+        // ==========================================
+        function generateRoom() {
+            isTeacher = true;
+            currentRoomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+            document.getElementById('room-code-display').innerText = currentRoomCode;
+
+            db.ref('sessions/' + currentRoomCode).set({
+                status: 'waiting',
+                createdAt: Date.now()
+            });
+
+            db.ref('sessions/' + currentRoomCode + '/students').on('value', (snapshot) => {
+                const listDiv = document.getElementById('student-list');
+                listDiv.innerHTML = ''; 
+                if (snapshot.exists()) {
+                    snapshot.forEach((child) => {
+                        listDiv.innerHTML += `<div class="student-item">🟢 ${child.val().name} (Ready)</div>`;
+                    });
+                } else {
+                    listDiv.innerHTML = 'Waiting for students to join...';
+                }
+            });
+        }
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+        document.getElementById('teacher-start-btn').addEventListener('click', async () => {
+            if(!currentRoomCode) return;
+            
+            const fileInput = document.getElementById('exam-file-input');
+            const sessionRef = db.ref('sessions/' + currentRoomCode);
+
+            const launchDashboard = () => {
+                showUI('teacher-monitor');
+                document.getElementById('monitor-room-code').innerText = currentRoomCode;
+                startMonitoringDashboard();
+            };
+
+            if (fileInput.files.length > 0 && fileInput.files[0].type === 'application/pdf') {
+                const btn = document.getElementById('teacher-start-btn');
+                btn.innerText = "Applying High-Accuracy Spatial Parse...";
+                btn.style.backgroundColor = "#ffc107";
+                btn.style.color = "black";
+                
+                const file = fileInput.files[0];
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+                
+                let allTextItems = [];
+                for(let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    
+                    textContent.items.forEach(item => {
+                        let text = item.str.trim();
+                        text = text.replace(/(?:\.){3,}/g, '').replace(/_{3,}/g, '').trim();
+                        if (text !== '') {
+                            allTextItems.push({
+                                text: text,
+                                x: item.transform[4],
+                                y: item.transform[5],
+                                page: i
+                            });
+                        }
+                    });
+                }
+
+                allTextItems.sort((a, b) => {
+                    if (a.page !== b.page) return a.page - b.page;
+                    if (Math.abs(a.y - b.y) > 4) return b.y - a.y; 
+                    return a.x - b.x;
+                });
+
+                let fullText = "";
+                let currentY = -1;
+                let currentPage = -1;
+
+                allTextItems.forEach(item => {
+                    if (currentPage !== item.page || (currentY !== -1 && Math.abs(currentY - item.y) > 4)) {
+                        fullText += "\n"; 
+                    } else if (fullText.length > 0 && !fullText.endsWith("\n")) {
+                        fullText += " "; 
+                    }
+                    fullText += item.text;
+                    currentY = item.y;
+                    currentPage = item.page;
+                });
+
+                const splitRegex = /(?=^\s*(?:Question\s+\d+|Q\s*\d+|\d+[\.\)]\s+|\d+\s+(?=[A-Za-z])))(?!\d+\.\d+)/gim;
+
+                let rawQuestions = fullText.split(splitRegex);
+                
+                let structuredQuestions = rawQuestions.filter(q => q.trim().length > 20).map(q => {
+                    let text = q.trim();
+                    let needsCanvas = /\b(sketch|draw|plot|construct|trace table|logic circuit|flowchart|show your working|venn diagram|graph|shade)\b/i.test(text);
+                    return { text: text, requiresCanvas: needsCanvas };
+                });
+
+                sessionRef.update({ 
+                    status: 'active',
+                    startTime: Date.now(),
+                    generatedQuestions: structuredQuestions
+                });
+                launchDashboard();
+            } else {
+                sessionRef.update({ status: 'active', startTime: Date.now() });
+                launchDashboard();
+            }
+        });
+
+        function startMonitoringDashboard() {
+            db.ref('sessions/' + currentRoomCode).on('value', (snapshot) => {
+                if(!snapshot.exists()) return;
+                
+                const sessionData = snapshot.val();
+                const examStartTime = sessionData.startTime || Date.now();
+                const students = sessionData.students || {};
+
+                const grid = document.getElementById('live-student-grid');
+                grid.innerHTML = ''; 
+
+                Object.keys(students).forEach(key => {
+                    const student = students[key];
+                    const strikes = student.strikes || 0;
+                    const terminatedAt = student.terminatedAt || 0; 
+                    const currentQ = student.currentQuestion ? `Q${student.currentQuestion}` : "Viewing Paper";
+                    
+                    let borderColor = "#28a745"; 
+                    let statusText = "🟢 Safe";
+                    
+                    if (strikes > 0 && strikes < 5) {
+                        borderColor = "#ffc107"; 
+                        statusText = "🟡 Warning";
+                    } else if (strikes >= 5) {
+                        borderColor = "#dc3545"; 
+                        statusText = "🔴 Terminated";
+                    }
+
+                    let historyHTML = "";
+                    if (student.violations) {
+                        Object.values(student.violations).forEach(v => {
+                            historyHTML += `<li>${v.reason}</li>`;
+                        });
+                    } else {
+                        historyHTML = `<li style="color: #6c757d; list-style: none; padding-left: 0;">No infractions recorded.</li>`;
+                    }
+
+                    grid.innerHTML += `
+                        <div class="student-card" style="border-color: ${borderColor};">
+                            <h3>
+                                <span>👤 ${student.name}</span>
+                                <span class="timer-badge" data-start="${examStartTime}" data-end="${terminatedAt}">00:00</span>
+                            </h3>
+                            <div class="current-q-badge">Active: ${currentQ}</div>
+                            <p style="margin-bottom: 2px;"><strong>Status:</strong> ${statusText}</p>
+                            <p style="margin-top: 0;"><strong>Strikes:</strong> <span style="color: ${borderColor}; font-weight: bold;">${strikes} / 5</span></p>
+                            <p style="margin-bottom: 0px; font-weight: bold; margin-top: 10px;">Infraction History:</p>
+                            <ul class="infraction-list">
+                                ${historyHTML}
+                            </ul>
+                        </div>
+                    `;
+                });
+            });
+        }
+
+        setInterval(() => {
+            document.querySelectorAll('.timer-badge').forEach(el => {
+                const startTime = parseInt(el.getAttribute('data-start'));
+                const endTime = parseInt(el.getAttribute('data-end'));
+                if (startTime && startTime > 0) {
+                    const calculationTime = (endTime && endTime > 0) ? endTime : Date.now();
+                    const diffSeconds = Math.floor((calculationTime - startTime) / 1000);
+                    const minutes = Math.floor(diffSeconds / 60).toString().padStart(2, '0');
+                    const seconds = (diffSeconds % 60).toString().padStart(2, '0');
+                    el.innerText = `${minutes}:${seconds}`;
+                    if (endTime > 0) {
+                        el.style.backgroundColor = "#ffcccc";
+                        el.style.color = "#721c24";
+                    }
+                }
+            });
+        }, 1000);
+
+        // ==========================================
+        // 3. STUDENT LOGIC
+        // ==========================================
+        async function joinRoom() {
+            const name = document.getElementById('student-name').value;
+            const code = document.getElementById('join-room-code').value.toUpperCase();
+            
+            if(!name || !code) { alert("Please enter both name and code."); return; }
+
+            const roomRef = db.ref('sessions/' + code);
+            roomRef.once('value', async (snapshot) => {
+                if (snapshot.exists() && snapshot.val().status === 'waiting') {
+                    currentRoomCode = code;
+                    currentUser = name;
+                    
+                    db.ref(`sessions/${code}/students/${name}`).set({ name: name, strikes: 0, currentQuestion: 0 });
+
+                    document.getElementById('student-join-box').style.display = 'none';
+                    document.getElementById('student-waiting-box').style.display = 'block';
+
+                    await faceapi.nets.ssdMobilenetv1.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
+                    await faceapi.nets.faceLandmark68Net.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
+                    document.querySelector('.loader').innerText = "AI Models Loaded. Ready to start.";
+
+                    roomRef.on('value', (snap) => {
+                        const data = snap.val();
+                        if (data.status === 'active' && !isExamActive) {
+                            
+                            if (data.generatedQuestions && data.generatedQuestions.length > 0) {
+                                const examContentBox = document.getElementById('exam-content');
+                                examContentBox.innerHTML = ''; 
+                                
+                                data.generatedQuestions.forEach((q, index) => {
+                                    examContentBox.innerHTML += `
+                                        <div class="question" id="q-${index + 1}">
+                                            <p class="question-text">${q.text}</p>
+                                            <textarea placeholder="Type your answer here..." onfocus="trackStudentProgress(${index + 1}, ${q.requiresCanvas})" rows="6"></textarea>
+                                        </div>
+                                    `;
+                                });
+
+                                if (window.MathJax) {
+                                    MathJax.typesetPromise([examContentBox]).catch((err) => console.log('MathJax Error:', err));
+                                }
+                            }
+                            startExamEngine();
+                        }
+                    });
+                } else {
+                    alert("Invalid room code or exam has already started.");
+                }
+            });
+        }
+
+        window.trackStudentProgress = function(questionNumber, requiresCanvas) {
+            if (currentRoomCode && currentUser) {
+                db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ 
+                    currentQuestion: questionNumber 
+                });
+            }
+            
+            const scratchpadBox = document.getElementById('scratchpad-container');
+            if (requiresCanvas) {
+                scratchpadBox.style.display = 'flex';
+                document.getElementById('exam-paper').style.flex = "0.6";
+            } else {
+                scratchpadBox.style.display = 'none';
+                document.getElementById('exam-paper').style.flex = "1";
+            }
+        };
+
+        // ==========================================
+        // 4. THE PROCTORING ENGINE
+        // ==========================================
+        let isExamActive = false;
+        
+        let strikeCount = 0; const maxStrikes = 5;
+        
+        let isWarningOpen = false; let lastStrikeTime = 0;
+        let aiInterval; let missingFaceCounter = 0; let multipleFaceCounter = 0; let gazeViolationCounter = 0;
+        let audioContext, audioAnalyser, audioDataArray, speechRecognition;
+        const alertSound = new Audio('alert.mp3'); 
+
+        const canvas = document.getElementById('scratchpad');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+        ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.strokeStyle = '#000';
+        function getMousePos(e) {
+            const r = canvas.getBoundingClientRect();
+            return { x: (e.clientX - r.left) * (canvas.width/r.width), y: (e.clientY - r.top) * (canvas.height/r.height) };
+        }
+        canvas.addEventListener('mousedown', e => { e.preventDefault(); isDrawing = true; const p = getMousePos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); });
+        canvas.addEventListener('mousemove', e => { if(!isDrawing) return; e.preventDefault(); const p = getMousePos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); });
+        window.addEventListener('mouseup', () => isDrawing = false);
+        document.getElementById('clear-pad').addEventListener('click', () => ctx.clearRect(0,0,canvas.width,canvas.height));
+
+        async function startExamEngine() {
+            try { await document.documentElement.requestFullscreen(); } catch (err) { alert("Fullscreen required!"); return; }
+            alertSound.play().then(() => { alertSound.pause(); alertSound.currentTime = 0; }).catch(e=>{});
+            
+            showUI('exam-container');
+            isExamActive = true;
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('video').srcObject = stream;
+                setupAudioAnalyser(stream);
+            } catch(e) {
+                document.getElementById('ai-status').innerText = "Camera/Mic Failed";
+            }
+        }
+
+        function handleViolation(reason) {
+            if (!isExamActive || isWarningOpen) return; 
+            const now = Date.now();
+            if (now - lastStrikeTime < 2500) return; 
+
+            strikeCount++;
+            document.getElementById('strike-text').innerText = `Strikes: ${strikeCount} / ${maxStrikes}`;
+            
+            if (currentRoomCode && currentUser) {
+                let dbUpdates = { strikes: strikeCount, lastInfraction: reason };
+                if (strikeCount >= maxStrikes) {
+                    dbUpdates.terminatedAt = Date.now();
+                }
+                db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update(dbUpdates);
+                db.ref(`sessions/${currentRoomCode}/students/${currentUser}/violations`).push({
+                    time: Date.now(), reason: reason
+                });
+            }
+
+            alertSound.play();
+
+            if (strikeCount >= maxStrikes) {
+                isExamActive = false;
+                clearInterval(aiInterval);
+                if (audioContext) audioContext.close(); 
+                if (speechRecognition) speechRecognition.stop();
+                document.getElementById('fail-reason').innerText = `Final violation: ${reason}`;
+                document.getElementById('fail-overlay').style.display = "flex";
+                if (document.fullscreenElement) document.exitFullscreen();
+            } else {
+                isWarningOpen = true; 
+                document.getElementById('warning-message').innerText = reason;
+                document.getElementById('warning-strike-count').innerText = `Strike ${strikeCount} of ${maxStrikes}`;
+                document.getElementById('warning-overlay').style.display = "flex";
+            }
+        }
+
+        document.getElementById('acknowledge-btn').addEventListener('click', () => {
+            document.getElementById('warning-overlay').style.display = "none";
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(e=>{});
+            lastStrikeTime = Date.now();
+            
+            missingFaceCounter = 0; multipleFaceCounter = 0; gazeViolationCounter = 0;
+            
+            setTimeout(() => { 
+                isWarningOpen = false; 
+                if (speechRecognition) { try { speechRecognition.start(); } catch(e){} }
+            }, 1000);
+        });
+
+        function setupAudioAnalyser(stream) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+            audioAnalyser = audioContext.createAnalyser();
+            audioAnalyser.fftSize = 256; 
+            source.connect(audioAnalyser);
+            audioDataArray = new Uint8Array(audioAnalyser.frequencyBinCount);
+            monitorVolume(); 
+
+            const SpeechAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (SpeechAPI) {
+                speechRecognition = new SpeechAPI();
+                speechRecognition.continuous = true; 
+                speechRecognition.interimResults = true; 
+                speechRecognition.onresult = (event) => {
+                    if (!isExamActive || isWarningOpen) return;
+                    for (let i = event.resultIndex; i < event.results.length; ++i) {
+                        if (event.results[i][0].transcript.trim().length > 0) {
+                            handleViolation("Talking / Human Speech Detected");
+                            break; 
+                        }
+                    }
+                };
+                speechRecognition.onend = () => { if (isExamActive && !isWarningOpen) { try { speechRecognition.start(); } catch(e){} } };
+                speechRecognition.start();
+            }
+        }
+
+        function monitorVolume() {
+            if (!isExamActive) return; 
+            requestAnimationFrame(monitorVolume); 
+            audioAnalyser.getByteFrequencyData(audioDataArray);
+            let sum = 0; for (let i = 0; i < audioDataArray.length; i++) sum += audioDataArray[i];
+            let avg = sum / audioDataArray.length;
+            document.getElementById('volume-level').innerText = Math.min(100, Math.round(avg));
+        }
+
+        document.addEventListener("visibilitychange", () => { if (document.hidden) handleViolation("Switched tabs or minimized browser"); });
+        window.addEventListener("blur", () => { setTimeout(() => { if (!document.hasFocus() && isExamActive && !isWarningOpen) handleViolation("Clicked outside the exam window"); }, 250); });
+        document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && isExamActive && !isWarningOpen) handleViolation("Exited full screen mode"); });
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        ['copy', 'cut', 'paste'].forEach(action => { document.addEventListener(action, e => { e.preventDefault(); handleViolation(`Attempted to ${action} text`); }); });
+        document.addEventListener('keydown', e => { if (e.ctrlKey || e.metaKey) { if (['p','s','c','v'].includes(e.key)) { e.preventDefault(); handleViolation("Attempted keyboard shortcut"); } } });
+
+        document.getElementById('video').addEventListener('play', () => {
+            document.getElementById('ai-status').innerText = "Proctoring Active";
+            document.getElementById('ai-status').style.background = "#28a745";
+            
+            aiInterval = setInterval(async () => {
+                if (!isExamActive || isWarningOpen) return;
+
+                const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 });
+                const detections = await faceapi.detectAllFaces(document.getElementById('video'), options).withFaceLandmarks();
+                const aiStatus = document.getElementById('ai-status');
+
+                if (detections.length === 0) {
+                    missingFaceCounter++;
+                    if (missingFaceCounter >= 5) { handleViolation("Left the camera frame"); missingFaceCounter = 0; } 
+                    else { aiStatus.innerText = `Warning: Face lost (${missingFaceCounter}/5)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
+                } else if (detections.length > 1) {
+                    multipleFaceCounter++;
+                    if (multipleFaceCounter >= 5) { handleViolation("Multiple people in camera frame"); multipleFaceCounter = 0; } 
+                    else { aiStatus.innerText = `Warning: Multiple faces (${multipleFaceCounter}/5)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
+                } else {
+                    const box = detections[0].detection.box;
+                    const nose = detections[0].landmarks.getNose()[3]; 
+                    const noseRelX = (nose.x - box.x) / box.width;
+                    const noseRelY = (nose.y - box.y) / box.height;
+                    
+                    if (noseRelX < 0.18 || noseRelX > 0.82 || noseRelY > 0.88) {
+                        gazeViolationCounter++;
+                        if (gazeViolationCounter >= 5) { handleViolation("Looking completely away from screen"); gazeViolationCounter = 0; } 
+                        else { aiStatus.innerText = `Warning: Head turned away (${gazeViolationCounter}/5)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
+                    } else {
+                        missingFaceCounter = 0; multipleFaceCounter = 0; gazeViolationCounter = 0;
+                        aiStatus.innerText = "Proctoring Active"; aiStatus.style.background = "#28a745"; aiStatus.style.color = "white";
+                    }
+                }
+            }, 1500); 
+        });
+    </script>
+</body>
+</html>
