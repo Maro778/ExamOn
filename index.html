@@ -762,12 +762,12 @@
 
                     if (detections.length === 0) {
                         missingFaceCounter++;
-                        if (missingFaceCounter >= 3) { handleViolation("Left the camera frame"); missingFaceCounter = 0; } 
-                        else { aiStatus.innerText = `Warning: Face lost (${missingFaceCounter}/3)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
+                        if (missingFaceCounter >= 2) { handleViolation("Left the camera frame"); missingFaceCounter = 0; } 
+                        else { aiStatus.innerText = `Warning: Face lost (${missingFaceCounter}/2)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
                     } else if (detections.length > 1) {
                         multipleFaceCounter++;
-                        if (multipleFaceCounter >= 3) { handleViolation("Multiple people in camera frame"); multipleFaceCounter = 0; } 
-                        else { aiStatus.innerText = `Warning: Multiple faces (${multipleFaceCounter}/3)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
+                        if (multipleFaceCounter >= 2) { handleViolation("Multiple people in camera frame"); multipleFaceCounter = 0; } 
+                        else { aiStatus.innerText = `Warning: Multiple faces (${multipleFaceCounter}/2)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
                     } else {
                         const box = detections[0].detection.box;
                         const nose = detections[0].landmarks.getNose()[3]; 
@@ -776,8 +776,8 @@
                         
                         if (noseRelX < 0.18 || noseRelX > 0.82 || noseRelY > 0.88) {
                             gazeViolationCounter++;
-                            if (gazeViolationCounter >= 3) { handleViolation("Looking completely away from screen"); gazeViolationCounter = 0; } 
-                            else { aiStatus.innerText = `Warning: Head turned away (${gazeViolationCounter}/3)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
+                            if (gazeViolationCounter >= 2) { handleViolation("Looking completely away from screen"); gazeViolationCounter = 0; } 
+                            else { aiStatus.innerText = `Warning: Head turned away (${gazeViolationCounter}/2)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
                         } else {
                             missingFaceCounter = 0; multipleFaceCounter = 0; gazeViolationCounter = 0;
                             aiStatus.innerText = "Proctoring Active"; aiStatus.style.background = "#28a745"; aiStatus.style.color = "white";
