@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <title>ExamOn: Proctoring Session</title>
+    <!-- Face-API for Gaze/Face Tracking -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     
-    <!-- 1. TensorFlow Core (Locked version for stability) -->
+    <!-- TensorFlow.js & COCO-SSD for Phone Detection -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.20.0/dist/tf.min.js"></script>
-    <!-- 2. Phone Detection Model (COCO-SSD) -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
-    <!-- 3. Face Tracker (Upgraded Vladmandic fork to prevent TF collisions) -->
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script>
     
     <!-- PDF.js Scanner -->
@@ -39,6 +39,7 @@
         .student-card { background: white; border: 2px solid #28a745; padding: 15px; border-radius: 8px; text-align: left; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
         .student-card h3 { margin: 0 0 10px 0; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
         .student-card p { margin: 5px 0; font-size: 14px; color: #555; }
+        .student-snapshot { width: 100%; height: 160px; object-fit: cover; background: #000; border-radius: 5px; margin-bottom: 10px; border: 1px solid #ccc; }
         .timer-badge { background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-size: 14px; color: #333; font-family: monospace; font-weight: bold; }
         .current-q-badge { display: inline-block; background: #0056b3; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px; }
         .infraction-list { margin: 10px 0 0 0; padding-left: 20px; font-size: 13px; color: #dc3545; flex-grow: 1; }
@@ -70,6 +71,7 @@
         #warning-overlay { background: rgba(0, 0, 0, 0.85); }
         .warning-box { background: #333; padding: 40px; border-radius: 10px; text-align: center; border: 4px solid #ffc107; color: white; }
         #fail-overlay { background: rgba(220, 53, 69, 0.95); color: white; }
+        #excuse-overlay { background: #6f42c1; color: white; }
         
         .upload-box { background: #f8f9fa; border: 2px dashed #0056b3; padding: 15px; border-radius: 8px; margin: 15px 0; text-align: left; }
         .upload-box label { font-weight: bold; display: block; margin-bottom: 8px; color: #0056b3; }
@@ -98,7 +100,6 @@
             <div class="upload-box">
                 <label>Optional: Upload Exam PDF for AI Parsing</label>
                 <input type="file" id="exam-file-input" accept="application/pdf" />
-                <p style="font-size: 12px; color: #666; margin: 5px 0 0 0;">The system will map the physical layout of the PDF, strip answer lines, and isolate exact questions.</p>
             </div>
 
             <div id="student-list">Waiting for students to join...</div>
@@ -174,6 +175,10 @@
             </div>
             <div id="ai-status">Connecting Camera...</div>
             <video id="video" autoplay muted></video>
+            
+            <!-- NEW: EXCUSE BUTTON -->
+            <button onclick="requestExcuse()" style="background-color: #6f42c1; width: 100%; margin: 15px 0 0 0;">Excuse Me (2 Mins)</button>
+            
             <div id="audio-status" style="margin-top: 10px; font-size: 14px; color: #9ca3af;">Mic Level: <span id="volume-level">0</span> / 100</div>
         </div>
     </div>
@@ -193,6 +198,14 @@
         <p style="font-size: 24px;">Maximum violations exceeded.</p>
         <p id="fail-reason" style="font-size: 18px; color: #ffcccc;"></p>
         <button onclick="location.reload()">Return to Menu</button>
+    </div>
+
+    <!-- NEW: EXCUSE MODAL -->
+    <div id="excuse-overlay" class="overlay">
+        <h1 style="font-size: 50px;">EXCUSED BREAK</h1>
+        <p style="font-size: 24px;">AI Tracking is temporarily paused.</p>
+        <h2 id="excuse-time" style="font-size: 60px; font-family: monospace; margin: 20px;">02:00</h2>
+        <p>Please return before the timer expires. You will be automatically returned to the exam.</p>
     </div>
 
     <!-- THE LOGIC -->
@@ -355,6 +368,9 @@
                         borderColor = "#17a2b8"; 
                         statusText = "🔵 Awaiting Entry Approval";
                         actionBtnHTML = `<button onclick="admitStudent('${key}')" style="background-color: #17a2b8; padding: 8px; width: 100%; margin-top: 10px;">Admit to Session</button>`;
+                    } else if (student.status === 'break') {
+                        borderColor = "#6f42c1"; 
+                        statusText = "🟣 On Excused Break";
                     } else if (strikes > 0 && strikes < 5) {
                         borderColor = "#ffc107"; 
                         statusText = "🟡 Warning";
@@ -368,12 +384,16 @@
                         Object.values(student.violations).forEach(v => { historyHTML += `<li>${v.reason}</li>`; });
                     } else { historyHTML = `<li style="color: #6c757d; list-style: none; padding-left: 0;">No infractions recorded.</li>`; }
 
+                    // INJECT THE SNAPSHOT FEED FOR THE TEACHER
+                    let snapshotImg = student.snapshot ? `<img class="student-snapshot" src="${student.snapshot}" alt="Live Cam">` : `<div class="student-snapshot" style="display:flex; align-items:center; justify-content:center; color:#666;">Waiting for camera feed...</div>`;
+
                     grid.innerHTML += `
                         <div class="student-card" style="border-color: ${borderColor};">
                             <h3>
                                 <span>👤 ${student.name}</span>
                                 <span class="timer-badge" data-start="${examStartTime}" data-end="${terminatedAt}">00:00</span>
                             </h3>
+                            ${snapshotImg}
                             <div class="current-q-badge">Active: ${currentQ}</div>
                             <p style="margin-bottom: 2px;"><strong>Status:</strong> ${statusText}</p>
                             <p style="margin-top: 0;"><strong>Strikes:</strong> <span style="color: ${borderColor}; font-weight: bold;">${strikes} / 5</span></p>
@@ -407,7 +427,7 @@
         
         async function initStudentSetup() {
             const btn = document.getElementById('student-init-btn');
-            btn.innerText = "Loading AI Core...";
+            btn.innerText = "Loading High-Accuracy AI...";
             btn.disabled = true;
             
             try {
@@ -415,12 +435,12 @@
                 await faceapi.nets.ssdMobilenetv1.loadFromUri(modelUrl);
                 await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
                 
-                // Explicitly calling the fastest architecture for Phone Detection
-                objectDetectionModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' }); 
+                // HIGHER ACCURACY: Switched to the heavier base mobilenet_v2 model for strict phone detection
+                objectDetectionModel = await cocoSsd.load({ base: 'mobilenet_v2' }); 
                 showUI('student-lobby');
             } catch(e) {
                 console.error("AI Load Error:", e);
-                alert("Failed to load AI parameters. If your internet is fine, please disable your Ad Blocker or Brave Shields, then refresh the page.");
+                alert("Failed to load AI parameters. Please disable your Ad Blocker or Brave Shields, then refresh the page.");
                 btn.innerText = "I am a Student";
                 btn.disabled = false;
             }
@@ -501,14 +521,41 @@
         };
 
         // ==========================================
-        // 4. THE PROCTORING ENGINE
+        // 4. THE PROCTORING ENGINE & EXCUSE LOGIC
         // ==========================================
         let isExamActive = false;
+        let isExcused = false; 
+        let excuseTimerInterval;
         let strikeCount = 0; const maxStrikes = 5;
         let isWarningOpen = false; let lastStrikeTime = 0;
         let aiInterval; let missingFaceCounter = 0; let multipleFaceCounter = 0; let gazeViolationCounter = 0;
         let audioContext, audioAnalyser, audioDataArray, speechRecognition;
         let beepContext = null;
+
+        function requestExcuse() {
+            isExcused = true;
+            db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ status: 'break' });
+            document.getElementById('excuse-overlay').style.display = 'flex';
+            
+            let timeLeft = 120; // 2 Minutes
+            document.getElementById('excuse-time').innerText = "02:00";
+            
+            excuseTimerInterval = setInterval(() => {
+                timeLeft--;
+                const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+                const s = (timeLeft % 60).toString().padStart(2, '0');
+                document.getElementById('excuse-time').innerText = `${m}:${s}`;
+                
+                if(timeLeft <= 0) {
+                    clearInterval(excuseTimerInterval);
+                    isExcused = false;
+                    document.getElementById('excuse-overlay').style.display = 'none';
+                    db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ status: 'testing' });
+                    // Re-enforce fullscreen just in case
+                    try { document.documentElement.requestFullscreen(); } catch(e){}
+                }
+            }, 1000);
+        }
 
         function initAudioEngine() {
             try {
@@ -564,13 +611,25 @@
                 setupAudioAnalyser(stream);
                 
                 db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ status: 'testing' });
+                
+                // BACKGROUND CAMERA FEED FOR TEACHER (Every 4 Seconds)
+                setInterval(() => {
+                    if (isExamActive && !isWarningOpen && !isExcused) {
+                        const snapCanvas = document.createElement('canvas');
+                        snapCanvas.width = 320; snapCanvas.height = 240; 
+                        snapCanvas.getContext('2d').drawImage(document.getElementById('video'), 0, 0, 320, 240);
+                        const b64 = snapCanvas.toDataURL('image/jpeg', 0.4); 
+                        db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ snapshot: b64 });
+                    }
+                }, 4000);
+
             } catch(e) {
                 document.getElementById('ai-status').innerText = "Camera/Mic Failed";
             }
         }
 
         function handleViolation(reason) {
-            if (!isExamActive || isWarningOpen) return; 
+            if (!isExamActive || isWarningOpen || isExcused) return; 
             const now = Date.now();
             if (now - lastStrikeTime < 2500) return; 
 
@@ -609,7 +668,7 @@
                     if (docElm.requestFullscreen) { await docElm.requestFullscreen(); }
                     else if (docElm.webkitRequestFullscreen) { await docElm.webkitRequestFullscreen(); }
                 }
-            } catch (err) { console.warn("Fullscreen retry blocked."); }
+            } catch (err) {}
 
             document.getElementById('warning-overlay').style.display = "none";
             lastStrikeTime = Date.now();
@@ -631,12 +690,12 @@
                 speechRecognition = new SpeechAPI();
                 speechRecognition.continuous = true; speechRecognition.interimResults = true; 
                 speechRecognition.onresult = (event) => {
-                    if (!isExamActive || isWarningOpen) return;
+                    if (!isExamActive || isWarningOpen || isExcused) return;
                     for (let i = event.resultIndex; i < event.results.length; ++i) {
                         if (event.results[i][0].transcript.trim().length > 0) { handleViolation("Talking / Human Speech Detected"); break; }
                     }
                 };
-                speechRecognition.onend = () => { if (isExamActive && !isWarningOpen) { try { speechRecognition.start(); } catch(e){} } };
+                speechRecognition.onend = () => { if (isExamActive && !isWarningOpen && !isExcused) { try { speechRecognition.start(); } catch(e){} } };
                 speechRecognition.start();
             }
         }
@@ -644,30 +703,29 @@
         function monitorVolume() {
             if (!isExamActive) return; 
             requestAnimationFrame(monitorVolume); 
+            if(isExcused) return; 
             audioAnalyser.getByteFrequencyData(audioDataArray);
             let sum = 0; for (let i = 0; i < audioDataArray.length; i++) sum += audioDataArray[i];
             let avg = sum / audioDataArray.length;
             document.getElementById('volume-level').innerText = Math.min(100, Math.round(avg));
         }
 
-        document.addEventListener("visibilitychange", () => { if (document.hidden) handleViolation("Switched tabs or minimized browser"); });
-        window.addEventListener("blur", () => { setTimeout(() => { if (!document.hasFocus() && isExamActive && !isWarningOpen) handleViolation("Clicked outside the exam window"); }, 250); });
-        
-        document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && isExamActive && !isWarningOpen) handleViolation("Exited full screen mode"); });
+        document.addEventListener("visibilitychange", () => { if (document.hidden && !isExcused) handleViolation("Switched tabs or minimized browser"); });
+        window.addEventListener("blur", () => { setTimeout(() => { if (!document.hasFocus() && isExamActive && !isWarningOpen && !isExcused) handleViolation("Clicked outside the exam window"); }, 250); });
+        document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && isExamActive && !isWarningOpen && !isExcused) handleViolation("Exited full screen mode"); });
         
         document.addEventListener('contextmenu', e => e.preventDefault());
-        ['copy', 'cut', 'paste'].forEach(action => { document.addEventListener(action, e => { e.preventDefault(); handleViolation(`Attempted to ${action} text`); }); });
-        document.addEventListener('keydown', e => { if (e.ctrlKey || e.metaKey) { if (['p','s','c','v'].includes(e.key)) { e.preventDefault(); handleViolation("Attempted keyboard shortcut"); } } });
+        ['copy', 'cut', 'paste'].forEach(action => { document.addEventListener(action, e => { e.preventDefault(); if(!isExcused) handleViolation(`Attempted to ${action} text`); }); });
+        document.addEventListener('keydown', e => { if (e.ctrlKey || e.metaKey) { if (['p','s','c','v'].includes(e.key)) { e.preventDefault(); if(!isExcused) handleViolation("Attempted keyboard shortcut"); } } });
 
         document.getElementById('video').addEventListener('play', () => {
             document.getElementById('ai-status').innerText = "Proctoring Active";
             document.getElementById('ai-status').style.background = "#28a745";
             
-            let aiToggle = true; // NEW: Tick-Tock mechanism to speed up detection
+            let aiToggle = true; 
 
-            // Reduced interval to 600ms (runs 2.5x faster)
             aiInterval = setInterval(async () => {
-                if (!isExamActive || isWarningOpen) return;
+                if (!isExamActive || isWarningOpen || isExcused) return;
                 
                 if (!document.fullscreenElement) {
                     handleViolation("Exited full screen mode");
@@ -678,7 +736,6 @@
                 const aiStatus = document.getElementById('ai-status');
 
                 if (aiToggle) {
-                    // --- TICK: PHONE DETECTION ---
                     if (objectDetectionModel) {
                         const objPredictions = await objectDetectionModel.detect(videoEl);
                         const phoneDetected = objPredictions.find(p => (p.class === 'cell phone' || p.class === 'remote' || p.class === 'tv') && p.score > 0.40);
@@ -688,7 +745,6 @@
                         }
                     }
                 } else {
-                    // --- TOCK: FACE DETECTION ---
                     const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 });
                     const detections = await faceapi.detectAllFaces(videoEl, options).withFaceLandmarks();
 
@@ -717,7 +773,6 @@
                     }
                 }
                 
-                // Swap the toggle for the next loop
                 aiToggle = !aiToggle;
 
             }, 600); 
