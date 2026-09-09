@@ -438,7 +438,6 @@
                 await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
                 await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
                 
-                // SPEED UPGRADE: Back to lite engine for instant frame processing
                 objectDetectionModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' }); 
                 showUI('student-lobby');
             } catch(e) {
@@ -716,8 +715,8 @@
             
             document.getElementById('volume-level').innerText = currentVolume;
 
-            if (currentVolume > 50 && !isWarningOpen && !isExcused) {
-                handleViolation("Excessive background noise (Mic Level > 50)");
+            if (currentVolume > 55 && !isWarningOpen && !isExcused) {
+                handleViolation("Excessive background noise (Mic Level > 55)");
             }
         }
 
@@ -735,7 +734,6 @@
             
             let aiToggle = true; 
 
-            // SPEED UPGRADE: Loop is now 500ms for rapid scanning.
             aiInterval = setInterval(async () => {
                 if (!isExamActive || isWarningOpen || isExcused) return;
                 
@@ -751,7 +749,6 @@
                     if (objectDetectionModel) {
                         const objPredictions = await objectDetectionModel.detect(videoEl);
                         
-                        // ZERO BUFFER: Strikes instantly upon 55% phone detection
                         const phoneDetected = objPredictions.find(p => p.class === 'cell phone' && p.score > 0.55);
                         
                         if (phoneDetected) {
@@ -763,7 +760,6 @@
                     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.40 });
                     const detections = await faceapi.detectAllFaces(videoEl, options).withFaceLandmarks();
 
-                    // 3-SECOND RULE: Strikes triggered after exactly 3 ticks
                     if (detections.length === 0) {
                         missingFaceCounter++;
                         if (missingFaceCounter >= 3) { handleViolation("Left the camera frame"); missingFaceCounter = 0; } 
