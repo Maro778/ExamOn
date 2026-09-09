@@ -428,7 +428,6 @@
             btn.disabled = true;
             
             try {
-                // FORCE WEBGL: Pushes AI calculations to the Graphics Card for zero-lag performance
                 await faceapi.tf.setBackend('webgl');
                 await faceapi.tf.ready();
 
@@ -436,7 +435,6 @@
                 
                 const modelUrl = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
                 
-                // SPEED UPGRADE: Swapped the heavy SSD model for the ultra-fast TinyFaceDetector
                 await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
                 await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
                 
@@ -746,16 +744,18 @@
                     if (objectDetectionModel) {
                         const objPredictions = await objectDetectionModel.detect(videoEl);
                         
-                        const phoneDetected = objPredictions.find(p => p.class === 'cell phone' && p.score > 0.55);
+                        // SAFE MARGIN: Raised to 65% to ignore calculators.
+                        const phoneDetected = objPredictions.find(p => p.class === 'cell phone' && p.score > 0.65);
                         
                         if (phoneDetected) {
                             phoneViolationCounter++;
-                            if (phoneViolationCounter >= 2) { 
+                            // DEEP BUFFER: Requires 4 consecutive ticks (~2.4 seconds) to trigger a strike
+                            if (phoneViolationCounter >= 4) { 
                                 handleViolation("Mobile device / Phone detected in camera frame");
                                 phoneViolationCounter = 0;
                                 return; 
                             } else {
-                                aiStatus.innerText = `Warning: Phone detected (${phoneViolationCounter}/2)...`; 
+                                aiStatus.innerText = `Warning: Phone detected (${phoneViolationCounter}/4)...`; 
                                 aiStatus.style.background = "#ffc107"; 
                                 aiStatus.style.color = "black";
                             }
@@ -764,7 +764,6 @@
                         }
                     }
                 } else {
-                    // SPEED UPGRADE: Explicitly using TinyFaceDetector configuration 
                     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.40 });
                     const detections = await faceapi.detectAllFaces(videoEl, options).withFaceLandmarks();
 
