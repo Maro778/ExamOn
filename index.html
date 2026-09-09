@@ -3,13 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <title>ExamOn: Proctoring Session</title>
-    <!-- Face-API for Gaze/Face Tracking -->
-    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     
-    <!-- TensorFlow.js & COCO-SSD for Phone Detection -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.20.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+    <!-- 1. NEW Face Tracker (Modern Vladmandic Fork) -->
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script>
+    
+    <!-- 2. The Bridge: Forces the Phone Detector to share the modern engine -->
+    <script>window.tf = faceapi.tf;</script>
+    
+    <!-- 3. NEW Phone Detector -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
     
     <!-- PDF.js Scanner -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -176,7 +178,6 @@
             <div id="ai-status">Connecting Camera...</div>
             <video id="video" autoplay muted></video>
             
-            <!-- NEW: EXCUSE BUTTON -->
             <button onclick="requestExcuse()" style="background-color: #6f42c1; width: 100%; margin: 15px 0 0 0;">Excuse Me (2 Mins)</button>
             
             <div id="audio-status" style="margin-top: 10px; font-size: 14px; color: #9ca3af;">Mic Level: <span id="volume-level">0</span> / 100</div>
@@ -200,7 +201,6 @@
         <button onclick="location.reload()">Return to Menu</button>
     </div>
 
-    <!-- NEW: EXCUSE MODAL -->
     <div id="excuse-overlay" class="overlay">
         <h1 style="font-size: 50px;">EXCUSED BREAK</h1>
         <p style="font-size: 24px;">AI Tracking is temporarily paused.</p>
@@ -228,7 +228,6 @@
         let currentRoomCode = "";
         let isTeacher = false;
         let currentUser = "";
-        
         let objectDetectionModel; 
         
         function showUI(uiId) {
@@ -384,7 +383,6 @@
                         Object.values(student.violations).forEach(v => { historyHTML += `<li>${v.reason}</li>`; });
                     } else { historyHTML = `<li style="color: #6c757d; list-style: none; padding-left: 0;">No infractions recorded.</li>`; }
 
-                    // INJECT THE SNAPSHOT FEED FOR THE TEACHER
                     let snapshotImg = student.snapshot ? `<img class="student-snapshot" src="${student.snapshot}" alt="Live Cam">` : `<div class="student-snapshot" style="display:flex; align-items:center; justify-content:center; color:#666;">Waiting for camera feed...</div>`;
 
                     grid.innerHTML += `
@@ -431,11 +429,11 @@
             btn.disabled = true;
             
             try {
+                // Using the official Vladmandic model repository 
                 const modelUrl = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
                 await faceapi.nets.ssdMobilenetv1.loadFromUri(modelUrl);
                 await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
                 
-                // HIGHER ACCURACY: Switched to the heavier base mobilenet_v2 model for strict phone detection
                 objectDetectionModel = await cocoSsd.load({ base: 'mobilenet_v2' }); 
                 showUI('student-lobby');
             } catch(e) {
@@ -537,7 +535,7 @@
             db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ status: 'break' });
             document.getElementById('excuse-overlay').style.display = 'flex';
             
-            let timeLeft = 120; // 2 Minutes
+            let timeLeft = 120; 
             document.getElementById('excuse-time').innerText = "02:00";
             
             excuseTimerInterval = setInterval(() => {
@@ -551,7 +549,6 @@
                     isExcused = false;
                     document.getElementById('excuse-overlay').style.display = 'none';
                     db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ status: 'testing' });
-                    // Re-enforce fullscreen just in case
                     try { document.documentElement.requestFullscreen(); } catch(e){}
                 }
             }, 1000);
@@ -612,7 +609,6 @@
                 
                 db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ status: 'testing' });
                 
-                // BACKGROUND CAMERA FEED FOR TEACHER (Every 4 Seconds)
                 setInterval(() => {
                     if (isExamActive && !isWarningOpen && !isExcused) {
                         const snapCanvas = document.createElement('canvas');
