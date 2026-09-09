@@ -410,12 +410,16 @@
             btn.disabled = true;
             
             try {
-                await faceapi.nets.ssdMobilenetv1.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
-                await faceapi.nets.faceLandmark68Net.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
+                // UPDATE: Official CORS-friendly model repository
+                const modelUrl = 'https://justadudewhohacks.github.io/face-api.js/models';
+                await faceapi.nets.ssdMobilenetv1.loadFromUri(modelUrl);
+                await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
+                
                 objectDetectionModel = await cocoSsd.load(); 
                 showUI('student-lobby');
             } catch(e) {
-                alert("Failed to load AI parameters. Please check your internet connection.");
+                console.error("AI Load Error:", e);
+                alert("Failed to load AI parameters. If your internet is fine, please disable your Ad Blocker or Brave Shields, then refresh the page.");
                 btn.innerText = "I am a Student";
                 btn.disabled = false;
             }
@@ -424,7 +428,7 @@
         function joinRoom() {
             const rawName = document.getElementById('student-name').value;
             const code = document.getElementById('join-room-code').value.toUpperCase();
-            const name = rawName.trim().replace(/[\.\#\$\[\]]/g, ""); // Clean Firebase keys
+            const name = rawName.trim().replace(/[\.\#\$\[\]]/g, ""); 
             
             if(!name || !code) { alert("Please enter both name and code."); return; }
 
@@ -446,7 +450,6 @@
                         document.getElementById('student-status-message').innerHTML = '<h2 style="color:#0056b3;">Requesting Entry...</h2><p>The exam is active. Waiting for teacher to admit you.</p>';
                     }
 
-                    // Anti-loop flag
                     window.examRendered = false;
 
                     roomRef.on('value', (snap) => {
@@ -458,7 +461,7 @@
                         if (data.status === 'active' && (myStatus === 'ready' || myStatus === 'approved') && !isExamActive) {
                             
                             if (data.generatedQuestions && data.generatedQuestions.length > 0 && !window.examRendered) {
-                                window.examRendered = true; // Prevent continuous DOM overwrite
+                                window.examRendered = true; 
                                 const examContentBox = document.getElementById('exam-content');
                                 examContentBox.innerHTML = ''; 
                                 data.generatedQuestions.forEach((q, index) => {
