@@ -438,7 +438,8 @@
                 await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
                 await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
                 
-                objectDetectionModel = await cocoSsd.load({ base: 'mobilenet_v2' }); 
+                // SPEED UPGRADE: Back to lite engine for instant frame processing
+                objectDetectionModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' }); 
                 showUI('student-lobby');
             } catch(e) {
                 console.error("AI Load Error:", e);
@@ -715,7 +716,6 @@
             
             document.getElementById('volume-level').innerText = currentVolume;
 
-            // STRICT UPGRADE: Hard threshold violation if background noise exceeds 50/100
             if (currentVolume > 50 && !isWarningOpen && !isExcused) {
                 handleViolation("Excessive background noise (Mic Level > 50)");
             }
@@ -735,6 +735,7 @@
             
             let aiToggle = true; 
 
+            // SPEED UPGRADE: Loop is now 500ms for rapid scanning.
             aiInterval = setInterval(async () => {
                 if (!isExamActive || isWarningOpen || isExcused) return;
                 
@@ -750,9 +751,9 @@
                     if (objectDetectionModel) {
                         const objPredictions = await objectDetectionModel.detect(videoEl);
                         
-                        const phoneDetected = objPredictions.find(p => p.class === 'cell phone' && p.score > 0.65);
+                        // ZERO BUFFER: Strikes instantly upon 55% phone detection
+                        const phoneDetected = objPredictions.find(p => p.class === 'cell phone' && p.score > 0.55);
                         
-                        // STRICT UPGRADE: Zero buffer. Instant strike the moment it is detected.
                         if (phoneDetected) {
                             handleViolation("Mobile device / Phone detected in camera frame");
                             return; 
@@ -762,14 +763,15 @@
                     const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.40 });
                     const detections = await faceapi.detectAllFaces(videoEl, options).withFaceLandmarks();
 
+                    // 3-SECOND RULE: Strikes triggered after exactly 3 ticks
                     if (detections.length === 0) {
                         missingFaceCounter++;
-                        if (missingFaceCounter >= 5) { handleViolation("Left the camera frame"); missingFaceCounter = 0; } 
-                        else { aiStatus.innerText = `Warning: Face lost (${missingFaceCounter}/5)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
+                        if (missingFaceCounter >= 3) { handleViolation("Left the camera frame"); missingFaceCounter = 0; } 
+                        else { aiStatus.innerText = `Warning: Face lost (${missingFaceCounter}/3)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
                     } else if (detections.length > 1) {
                         multipleFaceCounter++;
-                        if (multipleFaceCounter >= 5) { handleViolation("Multiple people in camera frame"); multipleFaceCounter = 0; } 
-                        else { aiStatus.innerText = `Warning: Multiple faces (${multipleFaceCounter}/5)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
+                        if (multipleFaceCounter >= 3) { handleViolation("Multiple people in camera frame"); multipleFaceCounter = 0; } 
+                        else { aiStatus.innerText = `Warning: Multiple faces (${multipleFaceCounter}/3)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
                     } else {
                         const box = detections[0].detection.box;
                         const nose = detections[0].landmarks.getNose()[3]; 
@@ -778,8 +780,8 @@
                         
                         if (noseRelX < 0.18 || noseRelX > 0.82 || noseRelY > 0.88) {
                             gazeViolationCounter++;
-                            if (gazeViolationCounter >= 5) { handleViolation("Looking completely away from screen"); gazeViolationCounter = 0; } 
-                            else { aiStatus.innerText = `Warning: Head turned away (${gazeViolationCounter}/5)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
+                            if (gazeViolationCounter >= 3) { handleViolation("Looking completely away from screen"); gazeViolationCounter = 0; } 
+                            else { aiStatus.innerText = `Warning: Head turned away (${gazeViolationCounter}/3)...`; aiStatus.style.background = "#ffc107"; aiStatus.style.color = "black"; }
                         } else {
                             missingFaceCounter = 0; multipleFaceCounter = 0; gazeViolationCounter = 0;
                             aiStatus.innerText = "Proctoring Active"; aiStatus.style.background = "#28a745"; aiStatus.style.color = "white";
@@ -789,7 +791,7 @@
                 
                 aiToggle = !aiToggle;
 
-            }, 600); 
+            }, 500); 
         });
     </script>
 </body>
