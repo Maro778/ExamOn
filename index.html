@@ -4,13 +4,11 @@
     <meta charset="UTF-8">
     <title>ExamOn: Proctoring Session</title>
     
-    <!-- 1. NEW Face Tracker (Modern Vladmandic Fork) -->
+    <!-- Face Tracker -->
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script>
-    
-    <!-- 2. The Bridge: Forces the Phone Detector to share the modern engine -->
     <script>window.tf = faceapi.tf;</script>
     
-    <!-- 3. NEW Phone Detector -->
+    <!-- Phone Detector -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
     
     <!-- PDF.js Scanner -->
@@ -41,7 +39,7 @@
         .student-card { background: white; border: 2px solid #28a745; padding: 15px; border-radius: 8px; text-align: left; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
         .student-card h3 { margin: 0 0 10px 0; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
         .student-card p { margin: 5px 0; font-size: 14px; color: #555; }
-        .student-snapshot { width: 100%; height: 160px; object-fit: cover; background: #000; border-radius: 5px; margin-bottom: 10px; border: 1px solid #ccc; }
+        .student-snapshot { width: 100%; height: 180px; object-fit: cover; background: #000; border-radius: 5px; margin-bottom: 10px; border: 1px solid #ccc; }
         .timer-badge { background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-size: 14px; color: #333; font-family: monospace; font-weight: bold; }
         .current-q-badge { display: inline-block; background: #0056b3; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px; }
         .infraction-list { margin: 10px 0 0 0; padding-left: 20px; font-size: 13px; color: #dc3545; flex-grow: 1; }
@@ -73,7 +71,7 @@
         #warning-overlay { background: rgba(0, 0, 0, 0.85); }
         .warning-box { background: #333; padding: 40px; border-radius: 10px; text-align: center; border: 4px solid #ffc107; color: white; }
         #fail-overlay { background: rgba(220, 53, 69, 0.95); color: white; }
-        #excuse-overlay { background: #6f42c1; color: white; }
+        #excuse-overlay { background: #6f42c1; color: white; text-align: center; }
         
         .upload-box { background: #f8f9fa; border: 2px dashed #0056b3; padding: 15px; border-radius: 8px; margin: 15px 0; text-align: left; }
         .upload-box label { font-weight: bold; display: block; margin-bottom: 8px; color: #0056b3; }
@@ -201,11 +199,13 @@
         <button onclick="location.reload()">Return to Menu</button>
     </div>
 
+    <!-- EXCUSE MODAL -->
     <div id="excuse-overlay" class="overlay">
         <h1 style="font-size: 50px;">EXCUSED BREAK</h1>
         <p style="font-size: 24px;">AI Tracking is temporarily paused.</p>
         <h2 id="excuse-time" style="font-size: 60px; font-family: monospace; margin: 20px;">02:00</h2>
         <p>Please return before the timer expires. You will be automatically returned to the exam.</p>
+        <button onclick="endExcuseEarly()" style="background-color: #28a745; font-size: 20px; margin-top: 30px;">I'm Back (Resume Exam)</button>
     </div>
 
     <!-- THE LOGIC -->
@@ -429,7 +429,6 @@
             btn.disabled = true;
             
             try {
-                // Using the official Vladmandic model repository 
                 const modelUrl = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
                 await faceapi.nets.ssdMobilenetv1.loadFromUri(modelUrl);
                 await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
@@ -545,13 +544,17 @@
                 document.getElementById('excuse-time').innerText = `${m}:${s}`;
                 
                 if(timeLeft <= 0) {
-                    clearInterval(excuseTimerInterval);
-                    isExcused = false;
-                    document.getElementById('excuse-overlay').style.display = 'none';
-                    db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ status: 'testing' });
-                    try { document.documentElement.requestFullscreen(); } catch(e){}
+                    endExcuseEarly();
                 }
             }, 1000);
+        }
+
+        function endExcuseEarly() {
+            clearInterval(excuseTimerInterval);
+            isExcused = false;
+            document.getElementById('excuse-overlay').style.display = 'none';
+            db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ status: 'testing' });
+            try { document.documentElement.requestFullscreen(); } catch(e){}
         }
 
         function initAudioEngine() {
@@ -609,15 +612,16 @@
                 
                 db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ status: 'testing' });
                 
+                // HIGH FREQUENCY STREAM: Sends tiny 240p image every 800ms
                 setInterval(() => {
                     if (isExamActive && !isWarningOpen && !isExcused) {
                         const snapCanvas = document.createElement('canvas');
-                        snapCanvas.width = 320; snapCanvas.height = 240; 
-                        snapCanvas.getContext('2d').drawImage(document.getElementById('video'), 0, 0, 320, 240);
-                        const b64 = snapCanvas.toDataURL('image/jpeg', 0.4); 
+                        snapCanvas.width = 240; snapCanvas.height = 180; 
+                        snapCanvas.getContext('2d').drawImage(document.getElementById('video'), 0, 0, 240, 180);
+                        const b64 = snapCanvas.toDataURL('image/jpeg', 0.2); 
                         db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ snapshot: b64 });
                     }
-                }, 4000);
+                }, 800);
 
             } catch(e) {
                 document.getElementById('ai-status').innerText = "Camera/Mic Failed";
@@ -734,14 +738,16 @@
                 if (aiToggle) {
                     if (objectDetectionModel) {
                         const objPredictions = await objectDetectionModel.detect(videoEl);
-                        const phoneDetected = objPredictions.find(p => (p.class === 'cell phone' || p.class === 'remote' || p.class === 'tv') && p.score > 0.40);
+                        // LOWERED THRESHOLD: Will detect phones even if it's only 35% sure
+                        const phoneDetected = objPredictions.find(p => (p.class === 'cell phone' || p.class === 'remote' || p.class === 'tv') && p.score > 0.35);
                         if (phoneDetected) {
                             handleViolation("Mobile device / Phone detected in camera frame");
                             return; 
                         }
                     }
                 } else {
-                    const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 });
+                    // LOWERED THRESHOLD: Faces detected at 40% confidence to prevent false drops
+                    const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.40 });
                     const detections = await faceapi.detectAllFaces(videoEl, options).withFaceLandmarks();
 
                     if (detections.length === 0) {
