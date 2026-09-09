@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <title>ExamOn: Proctoring Session</title>
-    <!-- Face-API for Gaze/Face Tracking -->
-    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     
-    <!-- TensorFlow.js & COCO-SSD for Phone Detection -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <!-- 1. TensorFlow Core (Locked version for stability) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.20.0/dist/tf.min.js"></script>
+    <!-- 2. Phone Detection Model (COCO-SSD) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+    <!-- 3. Face Tracker (Upgraded Vladmandic fork to prevent TF collisions) -->
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script>
     
     <!-- PDF.js Scanner -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -410,8 +411,8 @@
             btn.disabled = true;
             
             try {
-                // UPDATE: Official CORS-friendly model repository
-                const modelUrl = 'https://justadudewhohacks.github.io/face-api.js/models';
+                // UPDATE: Advanced collision-free CDN hosting for Face-API
+                const modelUrl = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
                 await faceapi.nets.ssdMobilenetv1.loadFromUri(modelUrl);
                 await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
                 
