@@ -199,7 +199,6 @@
         <button onclick="location.reload()">Return to Menu</button>
     </div>
 
-    <!-- EXCUSE MODAL -->
     <div id="excuse-overlay" class="overlay">
         <h1 style="font-size: 50px;">EXCUSED BREAK</h1>
         <p style="font-size: 24px;">AI Tracking is temporarily paused.</p>
@@ -425,12 +424,20 @@
         
         async function initStudentSetup() {
             const btn = document.getElementById('student-init-btn');
-            btn.innerText = "Loading High-Accuracy AI...";
+            btn.innerText = "Initializing Hardware Acceleration...";
             btn.disabled = true;
             
             try {
+                // FORCE WEBGL: Pushes AI calculations to the Graphics Card for zero-lag performance
+                await faceapi.tf.setBackend('webgl');
+                await faceapi.tf.ready();
+
+                btn.innerText = "Loading High-Speed AI...";
+                
                 const modelUrl = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
-                await faceapi.nets.ssdMobilenetv1.loadFromUri(modelUrl);
+                
+                // SPEED UPGRADE: Swapped the heavy SSD model for the ultra-fast TinyFaceDetector
+                await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
                 await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
                 
                 objectDetectionModel = await cocoSsd.load({ base: 'mobilenet_v2' }); 
@@ -526,6 +533,7 @@
         let strikeCount = 0; const maxStrikes = 5;
         let isWarningOpen = false; let lastStrikeTime = 0;
         let aiInterval; let missingFaceCounter = 0; let multipleFaceCounter = 0; let gazeViolationCounter = 0;
+        let phoneViolationCounter = 0; 
         let audioContext, audioAnalyser, audioDataArray, speechRecognition;
         let beepContext = null;
 
@@ -612,7 +620,6 @@
                 
                 db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ status: 'testing' });
                 
-                // HIGH FREQUENCY STREAM: Sends tiny 240p image every 800ms
                 setInterval(() => {
                     if (isExamActive && !isWarningOpen && !isExcused) {
                         const snapCanvas = document.createElement('canvas');
@@ -672,7 +679,7 @@
 
             document.getElementById('warning-overlay').style.display = "none";
             lastStrikeTime = Date.now();
-            missingFaceCounter = 0; multipleFaceCounter = 0; gazeViolationCounter = 0;
+            missingFaceCounter = 0; multipleFaceCounter = 0; gazeViolationCounter = 0; phoneViolationCounter = 0;
             setTimeout(() => { isWarningOpen = false; if (speechRecognition) { try { speechRecognition.start(); } catch(e){} } }, 1000);
         });
 
@@ -738,16 +745,27 @@
                 if (aiToggle) {
                     if (objectDetectionModel) {
                         const objPredictions = await objectDetectionModel.detect(videoEl);
-                        // LOWERED THRESHOLD: Will detect phones even if it's only 35% sure
-                        const phoneDetected = objPredictions.find(p => (p.class === 'cell phone' || p.class === 'remote' || p.class === 'tv') && p.score > 0.35);
+                        
+                        const phoneDetected = objPredictions.find(p => p.class === 'cell phone' && p.score > 0.55);
+                        
                         if (phoneDetected) {
-                            handleViolation("Mobile device / Phone detected in camera frame");
-                            return; 
+                            phoneViolationCounter++;
+                            if (phoneViolationCounter >= 2) { 
+                                handleViolation("Mobile device / Phone detected in camera frame");
+                                phoneViolationCounter = 0;
+                                return; 
+                            } else {
+                                aiStatus.innerText = `Warning: Phone detected (${phoneViolationCounter}/2)...`; 
+                                aiStatus.style.background = "#ffc107"; 
+                                aiStatus.style.color = "black";
+                            }
+                        } else {
+                            phoneViolationCounter = 0; 
                         }
                     }
                 } else {
-                    // LOWERED THRESHOLD: Faces detected at 40% confidence to prevent false drops
-                    const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.40 });
+                    // SPEED UPGRADE: Explicitly using TinyFaceDetector configuration 
+                    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.40 });
                     const detections = await faceapi.detectAllFaces(videoEl, options).withFaceLandmarks();
 
                     if (detections.length === 0) {
