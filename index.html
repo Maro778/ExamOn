@@ -3,8 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <title>ExamOn: Proctoring Session</title>
-    <!-- Face-API -->
+    <!-- Face-API for Gaze/Face Tracking -->
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    
+    <!-- TensorFlow.js & COCO-SSD for Phone Detection -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     
     <!-- PDF.js Scanner -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
@@ -19,38 +23,32 @@
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background-color: #f4f6f8; color: #333; user-select: none; -webkit-user-select: none; }
         
-        /* General Box Styling */
         .card { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 500px; width: 100%; text-align: center; }
         .center-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
         button { padding: 12px 25px; font-size: 16px; cursor: pointer; background-color: #0056b3; color: white; border: none; border-radius: 5px; font-weight: bold; margin: 10px; transition: background 0.3s; }
         button:hover { background-color: #004494; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
         input[type="text"] { padding: 12px; font-size: 16px; width: 80%; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
 
-        /* UIs */
         #role-select, #teacher-dashboard, #student-lobby, #teacher-monitor { display: none; }
         #student-list { text-align: left; background: #f9fafb; padding: 15px; border-radius: 5px; min-height: 100px; margin: 20px 0; border: 1px solid #ddd; }
         .student-item { padding: 8px; border-bottom: 1px solid #eee; font-weight: bold; }
 
-        /* Teacher Live Monitor Grid */
         #live-student-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; margin-top: 20px; width: 100%; }
         .student-card { background: white; border: 2px solid #28a745; padding: 15px; border-radius: 8px; text-align: left; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
         .student-card h3 { margin: 0 0 10px 0; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
         .student-card p { margin: 5px 0; font-size: 14px; color: #555; }
         .timer-badge { background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-size: 14px; color: #333; font-family: monospace; font-weight: bold; }
         .current-q-badge { display: inline-block; background: #0056b3; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px; }
-        
         .infraction-list { margin: 10px 0 0 0; padding-left: 20px; font-size: 13px; color: #dc3545; flex-grow: 1; }
         .infraction-list li { margin-bottom: 4px; }
 
-        /* Exam Layout */
         #exam-container { display: none; flex-direction: row; height: 100vh; overflow: hidden; }
         #left-panel { flex: 7; display: flex; flex-direction: column; border-right: 2px solid #ddd; background: white; }
         #exam-paper { flex: 1; padding: 40px; overflow-y: auto; }
         
-        /* Dynamic Scratchpad */
         #scratchpad-container { display: none; flex-direction: column; align-items: center; padding: 15px; border-top: 2px solid #ccc; background: #f9fafb; flex-shrink: 0; height: 300px; }
         
-        /* Enhanced Questions Styling */
         .question { background: #fff; border: 1px solid #e5e7eb; padding: 25px; border-radius: 8px; margin-bottom: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: border 0.3s; }
         .question:focus-within { border: 2px solid #0056b3; }
         .question h3 { margin-top: 0; color: #111827; border-bottom: 1px solid #eee; padding-bottom: 10px; font-size: 20px;}
@@ -85,7 +83,7 @@
             <h1>ExamOn</h1>
             <p>Join or create an online examination session.</p>
             <button onclick="showUI('teacher-dashboard'); generateRoom();">I am a Teacher</button>
-            <button onclick="showUI('student-lobby')">I am a Student</button>
+            <button onclick="initStudentSetup();" id="student-init-btn">I am a Student</button>
         </div>
     </div>
 
@@ -129,20 +127,22 @@
             <h2>Join Examination</h2>
             <input type="text" id="student-name" placeholder="Enter your Full Name" required />
             <input type="text" id="join-room-code" placeholder="Enter Room Code" required style="text-transform: uppercase;" />
-            <button onclick="joinRoom()" style="width: 100%;">Enter Waiting Room</button>
+            <button onclick="joinRoom()" id="student-join-btn" style="width: 100%;">Enter Session</button>
         </div>
         
         <div class="card" id="student-waiting-box" style="display: none;">
-            <h2>Waiting for Teacher...</h2>
-            <p>You have successfully connected to the room.</p>
-            <p style="color: #dc3545; font-weight: bold;">When the teacher starts the exam, you will be prompted for Full Screen and Camera access.</p>
-            <div style="margin-top: 20px;" class="loader">Loading AI Models...</div>
+            <div id="student-status-message">
+                <h2>Connecting to Secure Server...</h2>
+                <div class="loader">Verifying Access...</div>
+            </div>
+            <div id="student-start-action" style="display: none; margin-top: 20px;">
+                <button onclick="startExamEngine()" style="background-color: #28a745; width: 100%; font-size: 20px; padding: 15px;">Enter Fullscreen & Begin Exam</button>
+            </div>
         </div>
     </div>
 
     <!-- 5. STUDENT EXAM INTERFACE -->
     <div id="exam-container">
-        <!-- Left Side: Questions + Scratchpad -->
         <div id="left-panel">
             <div id="exam-paper">
                 <h2>Candidate Examination Paper</h2>
@@ -157,7 +157,6 @@
                 <button onclick="alert('Exam Submitted!'); location.reload();" style="background-color: #28a745; margin-top: 20px;">Submit Examination</button>
             </div>
             
-            <!-- Conditional Dynamic Scratchpad -->
             <div id="scratchpad-container">
                 <div class="scratchpad-header">
                     <strong style="color: #0056b3;">Digital Scratchpad (Required for current question)</strong>
@@ -167,10 +166,8 @@
             </div>
         </div>
 
-        <!-- Right Side: Proctoring Panel -->
         <div id="proctor-panel">
             <div id="strike-box">
-                <!-- UPDATED STRIKE COUNT TEXT -->
                 <p class="strike-count" id="strike-text">Strikes: 0 / 5</p>
                 <p id="last-reason">System Active & Secure</p>
             </div>
@@ -218,6 +215,8 @@
         let isTeacher = false;
         let currentUser = "";
         
+        let objectDetectionModel; 
+        
         function showUI(uiId) {
             document.getElementById('role-select').style.display = 'none';
             document.getElementById('teacher-dashboard').style.display = 'none';
@@ -228,7 +227,7 @@
         }
 
         // ==========================================
-        // 2. TEACHER LOGIC & ADVANCED SPATIAL PDF SCANNER
+        // 2. TEACHER LOGIC
         // ==========================================
         function generateRoom() {
             isTeacher = true;
@@ -245,7 +244,8 @@
                 listDiv.innerHTML = ''; 
                 if (snapshot.exists()) {
                     snapshot.forEach((child) => {
-                        listDiv.innerHTML += `<div class="student-item">🟢 ${child.val().name} (Ready)</div>`;
+                        let statusText = child.val().status === 'requesting' ? "🟡 Requesting Rejoin" : "🟢 Ready";
+                        listDiv.innerHTML += `<div class="student-item">${statusText} - ${child.val().name}</div>`;
                     });
                 } else {
                     listDiv.innerHTML = 'Waiting for students to join...';
@@ -257,7 +257,6 @@
 
         document.getElementById('teacher-start-btn').addEventListener('click', async () => {
             if(!currentRoomCode) return;
-            
             const fileInput = document.getElementById('exam-file-input');
             const sessionRef = db.ref('sessions/' + currentRoomCode);
 
@@ -269,9 +268,7 @@
 
             if (fileInput.files.length > 0 && fileInput.files[0].type === 'application/pdf') {
                 const btn = document.getElementById('teacher-start-btn');
-                btn.innerText = "Applying High-Accuracy Spatial Parse...";
-                btn.style.backgroundColor = "#ffc107";
-                btn.style.color = "black";
+                btn.innerText = "Processing PDF...";
                 
                 const file = fileInput.files[0];
                 const arrayBuffer = await file.arrayBuffer();
@@ -281,17 +278,11 @@
                 for(let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
-                    
                     textContent.items.forEach(item => {
                         let text = item.str.trim();
                         text = text.replace(/(?:\.){3,}/g, '').replace(/_{3,}/g, '').trim();
                         if (text !== '') {
-                            allTextItems.push({
-                                text: text,
-                                x: item.transform[4],
-                                y: item.transform[5],
-                                page: i
-                            });
+                            allTextItems.push({ text: text, x: item.transform[4], y: item.transform[5], page: i });
                         }
                     });
                 }
@@ -303,22 +294,16 @@
                 });
 
                 let fullText = "";
-                let currentY = -1;
-                let currentPage = -1;
-
+                let currentY = -1; let currentPage = -1;
                 allTextItems.forEach(item => {
                     if (currentPage !== item.page || (currentY !== -1 && Math.abs(currentY - item.y) > 4)) {
                         fullText += "\n"; 
-                    } else if (fullText.length > 0 && !fullText.endsWith("\n")) {
-                        fullText += " "; 
-                    }
+                    } else if (fullText.length > 0 && !fullText.endsWith("\n")) { fullText += " "; }
                     fullText += item.text;
-                    currentY = item.y;
-                    currentPage = item.page;
+                    currentY = item.y; currentPage = item.page;
                 });
 
                 const splitRegex = /(?=^\s*(?:Question\s+\d+|Q\s*\d+|\d+[\.\)]\s+|\d+\s+(?=[A-Za-z])))(?!\d+\.\d+)/gim;
-
                 let rawQuestions = fullText.split(splitRegex);
                 
                 let structuredQuestions = rawQuestions.filter(q => q.trim().length > 20).map(q => {
@@ -327,17 +312,22 @@
                     return { text: text, requiresCanvas: needsCanvas };
                 });
 
-                sessionRef.update({ 
-                    status: 'active',
-                    startTime: Date.now(),
-                    generatedQuestions: structuredQuestions
-                });
+                sessionRef.update({ status: 'active', startTime: Date.now(), generatedQuestions: structuredQuestions });
                 launchDashboard();
             } else {
                 sessionRef.update({ status: 'active', startTime: Date.now() });
                 launchDashboard();
             }
         });
+
+        window.admitStudent = function(studentName) {
+            db.ref(`sessions/${currentRoomCode}/students/${studentName}`).update({
+                status: 'approved',
+                strikes: 0,
+                terminatedAt: 0,
+                lastInfraction: "Teacher granted access"
+            });
+        };
 
         function startMonitoringDashboard() {
             db.ref('sessions/' + currentRoomCode).on('value', (snapshot) => {
@@ -358,8 +348,13 @@
                     
                     let borderColor = "#28a745"; 
                     let statusText = "🟢 Safe";
+                    let actionBtnHTML = "";
                     
-                    if (strikes > 0 && strikes < 5) {
+                    if (student.status === 'requesting') {
+                        borderColor = "#17a2b8"; 
+                        statusText = "🔵 Awaiting Entry Approval";
+                        actionBtnHTML = `<button onclick="admitStudent('${key}')" style="background-color: #17a2b8; padding: 8px; width: 100%; margin-top: 10px;">Admit to Session</button>`;
+                    } else if (strikes > 0 && strikes < 5) {
                         borderColor = "#ffc107"; 
                         statusText = "🟡 Warning";
                     } else if (strikes >= 5) {
@@ -369,12 +364,8 @@
 
                     let historyHTML = "";
                     if (student.violations) {
-                        Object.values(student.violations).forEach(v => {
-                            historyHTML += `<li>${v.reason}</li>`;
-                        });
-                    } else {
-                        historyHTML = `<li style="color: #6c757d; list-style: none; padding-left: 0;">No infractions recorded.</li>`;
-                    }
+                        Object.values(student.violations).forEach(v => { historyHTML += `<li>${v.reason}</li>`; });
+                    } else { historyHTML = `<li style="color: #6c757d; list-style: none; padding-left: 0;">No infractions recorded.</li>`; }
 
                     grid.innerHTML += `
                         <div class="student-card" style="border-color: ${borderColor};">
@@ -386,9 +377,8 @@
                             <p style="margin-bottom: 2px;"><strong>Status:</strong> ${statusText}</p>
                             <p style="margin-top: 0;"><strong>Strikes:</strong> <span style="color: ${borderColor}; font-weight: bold;">${strikes} / 5</span></p>
                             <p style="margin-bottom: 0px; font-weight: bold; margin-top: 10px;">Infraction History:</p>
-                            <ul class="infraction-list">
-                                ${historyHTML}
-                            </ul>
+                            <ul class="infraction-list">${historyHTML}</ul>
+                            ${actionBtnHTML}
                         </div>
                     `;
                 });
@@ -405,10 +395,7 @@
                     const minutes = Math.floor(diffSeconds / 60).toString().padStart(2, '0');
                     const seconds = (diffSeconds % 60).toString().padStart(2, '0');
                     el.innerText = `${minutes}:${seconds}`;
-                    if (endTime > 0) {
-                        el.style.backgroundColor = "#ffcccc";
-                        el.style.color = "#721c24";
-                    }
+                    if (endTime > 0) { el.style.backgroundColor = "#ffcccc"; el.style.color = "#721c24"; }
                 }
             });
         }, 1000);
@@ -416,35 +403,64 @@
         // ==========================================
         // 3. STUDENT LOGIC
         // ==========================================
-        async function joinRoom() {
-            const name = document.getElementById('student-name').value;
+        
+        async function initStudentSetup() {
+            const btn = document.getElementById('student-init-btn');
+            btn.innerText = "Loading AI Core...";
+            btn.disabled = true;
+            
+            try {
+                await faceapi.nets.ssdMobilenetv1.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
+                await faceapi.nets.faceLandmark68Net.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
+                objectDetectionModel = await cocoSsd.load(); 
+                showUI('student-lobby');
+            } catch(e) {
+                alert("Failed to load AI parameters. Please check your internet connection.");
+                btn.innerText = "I am a Student";
+                btn.disabled = false;
+            }
+        }
+
+        function joinRoom() {
+            const rawName = document.getElementById('student-name').value;
             const code = document.getElementById('join-room-code').value.toUpperCase();
+            const name = rawName.trim().replace(/[\.\#\$\[\]]/g, ""); // Clean Firebase keys
             
             if(!name || !code) { alert("Please enter both name and code."); return; }
 
             const roomRef = db.ref('sessions/' + code);
-            roomRef.once('value', async (snapshot) => {
-                if (snapshot.exists() && snapshot.val().status === 'waiting') {
+            roomRef.once('value', (snapshot) => {
+                if (snapshot.exists()) {
                     currentRoomCode = code;
                     currentUser = name;
+                    const sessionStatus = snapshot.val().status;
                     
-                    db.ref(`sessions/${code}/students/${name}`).set({ name: name, strikes: 0, currentQuestion: 0 });
-
                     document.getElementById('student-join-box').style.display = 'none';
                     document.getElementById('student-waiting-box').style.display = 'block';
 
-                    await faceapi.nets.ssdMobilenetv1.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
-                    await faceapi.nets.faceLandmark68Net.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights');
-                    document.querySelector('.loader').innerText = "AI Models Loaded. Ready to start.";
+                    if (sessionStatus === 'waiting') {
+                        db.ref(`sessions/${code}/students/${name}`).set({ name: name, strikes: 0, status: 'ready', currentQuestion: 0 });
+                        document.getElementById('student-status-message').innerHTML = '<h2>Waiting for Teacher...</h2><p>The exam session has not started yet.</p>';
+                    } else if (sessionStatus === 'active') {
+                        db.ref(`sessions/${code}/students/${name}`).update({ name: name, status: 'requesting' });
+                        document.getElementById('student-status-message').innerHTML = '<h2 style="color:#0056b3;">Requesting Entry...</h2><p>The exam is active. Waiting for teacher to admit you.</p>';
+                    }
+
+                    // Anti-loop flag
+                    window.examRendered = false;
 
                     roomRef.on('value', (snap) => {
                         const data = snap.val();
-                        if (data.status === 'active' && !isExamActive) {
+                        if (!data || !data.students || !data.students[currentUser]) return;
+                        
+                        const myStatus = data.students[currentUser].status;
+                        
+                        if (data.status === 'active' && (myStatus === 'ready' || myStatus === 'approved') && !isExamActive) {
                             
-                            if (data.generatedQuestions && data.generatedQuestions.length > 0) {
+                            if (data.generatedQuestions && data.generatedQuestions.length > 0 && !window.examRendered) {
+                                window.examRendered = true; // Prevent continuous DOM overwrite
                                 const examContentBox = document.getElementById('exam-content');
                                 examContentBox.innerHTML = ''; 
-                                
                                 data.generatedQuestions.forEach((q, index) => {
                                     examContentBox.innerHTML += `
                                         <div class="question" id="q-${index + 1}">
@@ -453,27 +469,23 @@
                                         </div>
                                     `;
                                 });
-
-                                if (window.MathJax) {
-                                    MathJax.typesetPromise([examContentBox]).catch((err) => console.log('MathJax Error:', err));
-                                }
+                                if (window.MathJax) { MathJax.typesetPromise([examContentBox]).catch(e => {}); }
                             }
-                            startExamEngine();
+                            
+                            document.getElementById('student-status-message').style.display = 'none';
+                            document.getElementById('student-start-action').style.display = 'block';
                         }
                     });
                 } else {
-                    alert("Invalid room code or exam has already started.");
+                    alert("Invalid room code.");
                 }
             });
         }
 
         window.trackStudentProgress = function(questionNumber, requiresCanvas) {
             if (currentRoomCode && currentUser) {
-                db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ 
-                    currentQuestion: questionNumber 
-                });
+                db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ currentQuestion: questionNumber });
             }
-            
             const scratchpadBox = document.getElementById('scratchpad-container');
             if (requiresCanvas) {
                 scratchpadBox.style.display = 'flex';
@@ -488,13 +500,31 @@
         // 4. THE PROCTORING ENGINE
         // ==========================================
         let isExamActive = false;
-        
         let strikeCount = 0; const maxStrikes = 5;
-        
         let isWarningOpen = false; let lastStrikeTime = 0;
         let aiInterval; let missingFaceCounter = 0; let multipleFaceCounter = 0; let gazeViolationCounter = 0;
         let audioContext, audioAnalyser, audioDataArray, speechRecognition;
-        const alertSound = new Audio('alert.mp3'); 
+        let beepContext = null;
+
+        function initAudioEngine() {
+            try {
+                if (!beepContext) { beepContext = new (window.AudioContext || window.webkitAudioContext)(); }
+                if (beepContext.state === 'suspended') { beepContext.resume(); }
+            } catch(e) {}
+        }
+
+        function playAlertSound() {
+            try {
+                if (!beepContext) return;
+                const osc = beepContext.createOscillator();
+                const gain = beepContext.createGain();
+                osc.connect(gain); gain.connect(beepContext.destination);
+                osc.type = 'square'; osc.frequency.setValueAtTime(400, beepContext.currentTime);
+                gain.gain.setValueAtTime(0.1, beepContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, beepContext.currentTime + 0.4);
+                osc.start(); osc.stop(beepContext.currentTime + 0.4);
+            } catch(e) {}
+        }
 
         const canvas = document.getElementById('scratchpad');
         const ctx = canvas.getContext('2d');
@@ -510,8 +540,16 @@
         document.getElementById('clear-pad').addEventListener('click', () => ctx.clearRect(0,0,canvas.width,canvas.height));
 
         async function startExamEngine() {
-            try { await document.documentElement.requestFullscreen(); } catch (err) { alert("Fullscreen required!"); return; }
-            alertSound.play().then(() => { alertSound.pause(); alertSound.currentTime = 0; }).catch(e=>{});
+            try { 
+                const docElm = document.documentElement;
+                if (docElm.requestFullscreen) { await docElm.requestFullscreen(); }
+                else if (docElm.webkitRequestFullscreen) { await docElm.webkitRequestFullscreen(); }
+            } catch (err) { 
+                console.warn("Fullscreen blocked, but proceeding anyway.");
+            }
+            
+            initAudioEngine();
+            playAlertSound(); 
             
             showUI('exam-container');
             isExamActive = true;
@@ -520,6 +558,8 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 document.getElementById('video').srcObject = stream;
                 setupAudioAnalyser(stream);
+                
+                db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update({ status: 'testing' });
             } catch(e) {
                 document.getElementById('ai-status').innerText = "Camera/Mic Failed";
             }
@@ -535,16 +575,12 @@
             
             if (currentRoomCode && currentUser) {
                 let dbUpdates = { strikes: strikeCount, lastInfraction: reason };
-                if (strikeCount >= maxStrikes) {
-                    dbUpdates.terminatedAt = Date.now();
-                }
+                if (strikeCount >= maxStrikes) { dbUpdates.terminatedAt = Date.now(); dbUpdates.status = 'terminated'; }
                 db.ref(`sessions/${currentRoomCode}/students/${currentUser}`).update(dbUpdates);
-                db.ref(`sessions/${currentRoomCode}/students/${currentUser}/violations`).push({
-                    time: Date.now(), reason: reason
-                });
+                db.ref(`sessions/${currentRoomCode}/students/${currentUser}/violations`).push({ time: Date.now(), reason: reason });
             }
 
-            alertSound.play();
+            playAlertSound();
 
             if (strikeCount >= maxStrikes) {
                 isExamActive = false;
@@ -562,17 +598,19 @@
             }
         }
 
-        document.getElementById('acknowledge-btn').addEventListener('click', () => {
+        document.getElementById('acknowledge-btn').addEventListener('click', async () => {
+            try { 
+                if (!document.fullscreenElement) {
+                    const docElm = document.documentElement;
+                    if (docElm.requestFullscreen) { await docElm.requestFullscreen(); }
+                    else if (docElm.webkitRequestFullscreen) { await docElm.webkitRequestFullscreen(); }
+                }
+            } catch (err) { console.warn("Fullscreen retry blocked."); }
+
             document.getElementById('warning-overlay').style.display = "none";
-            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(e=>{});
             lastStrikeTime = Date.now();
-            
             missingFaceCounter = 0; multipleFaceCounter = 0; gazeViolationCounter = 0;
-            
-            setTimeout(() => { 
-                isWarningOpen = false; 
-                if (speechRecognition) { try { speechRecognition.start(); } catch(e){} }
-            }, 1000);
+            setTimeout(() => { isWarningOpen = false; if (speechRecognition) { try { speechRecognition.start(); } catch(e){} } }, 1000);
         });
 
         function setupAudioAnalyser(stream) {
@@ -587,15 +625,11 @@
             const SpeechAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (SpeechAPI) {
                 speechRecognition = new SpeechAPI();
-                speechRecognition.continuous = true; 
-                speechRecognition.interimResults = true; 
+                speechRecognition.continuous = true; speechRecognition.interimResults = true; 
                 speechRecognition.onresult = (event) => {
                     if (!isExamActive || isWarningOpen) return;
                     for (let i = event.resultIndex; i < event.results.length; ++i) {
-                        if (event.results[i][0].transcript.trim().length > 0) {
-                            handleViolation("Talking / Human Speech Detected");
-                            break; 
-                        }
+                        if (event.results[i][0].transcript.trim().length > 0) { handleViolation("Talking / Human Speech Detected"); break; }
                     }
                 };
                 speechRecognition.onend = () => { if (isExamActive && !isWarningOpen) { try { speechRecognition.start(); } catch(e){} } };
@@ -614,7 +648,9 @@
 
         document.addEventListener("visibilitychange", () => { if (document.hidden) handleViolation("Switched tabs or minimized browser"); });
         window.addEventListener("blur", () => { setTimeout(() => { if (!document.hasFocus() && isExamActive && !isWarningOpen) handleViolation("Clicked outside the exam window"); }, 250); });
+        
         document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && isExamActive && !isWarningOpen) handleViolation("Exited full screen mode"); });
+        
         document.addEventListener('contextmenu', e => e.preventDefault());
         ['copy', 'cut', 'paste'].forEach(action => { document.addEventListener(action, e => { e.preventDefault(); handleViolation(`Attempted to ${action} text`); }); });
         document.addEventListener('keydown', e => { if (e.ctrlKey || e.metaKey) { if (['p','s','c','v'].includes(e.key)) { e.preventDefault(); handleViolation("Attempted keyboard shortcut"); } } });
@@ -625,9 +661,25 @@
             
             aiInterval = setInterval(async () => {
                 if (!isExamActive || isWarningOpen) return;
+                
+                if (!document.fullscreenElement) {
+                    handleViolation("Exited full screen mode");
+                    return;
+                }
+
+                const videoEl = document.getElementById('video');
+                
+                if (objectDetectionModel) {
+                    const objPredictions = await objectDetectionModel.detect(videoEl);
+                    const phoneDetected = objPredictions.find(p => (p.class === 'cell phone' || p.class === 'remote' || p.class === 'tv') && p.score > 0.40);
+                    if (phoneDetected) {
+                        handleViolation("Mobile device / Phone detected in camera frame");
+                        return; 
+                    }
+                }
 
                 const options = new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 });
-                const detections = await faceapi.detectAllFaces(document.getElementById('video'), options).withFaceLandmarks();
+                const detections = await faceapi.detectAllFaces(videoEl, options).withFaceLandmarks();
                 const aiStatus = document.getElementById('ai-status');
 
                 if (detections.length === 0) {
